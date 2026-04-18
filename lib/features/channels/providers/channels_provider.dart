@@ -150,17 +150,30 @@ final userMembershipsProvider = FutureProvider<Map<String, String>>((ref) async 
   } catch (e) { return {}; }
 });
 
-// Notifications réelles corrigées
 final pendingRequestsProvider = StreamProvider<List<ChannelMember>>((ref) async* {
   final userId = _client.auth.currentUser?.id;
   if (userId == null) { yield []; return; }
 
   Future<List<ChannelMember>> fetchRequests() async {
-    // Récupérer directement les demandes sur les channels dont on est créateur
+    // 1. Récupérer uniquement les channels dont je suis créateur
+    final myChannels = await _client
+        .from('channels')
+        .select('id')
+        .eq('created_by', userId);
+
+    final myChannelIds = (myChannels as List)
+        .map((c) => c['id'].toString())
+        .toList();
+
+    // 2. Si je ne suis créateur d'aucun channel → aucune notif
+    if (myChannelIds.isEmpty) return [];
+
+    // 3. Récupérer les demandes pending sur MES channels uniquement
     final data = await _client
         .from('channel_members')
         .select('channel_id, user_id, status, profiles(username)')
-        .eq('status', 'pending');
+        .eq('status', 'pending')
+        .inFilter('channel_id', myChannelIds);
 
     return (data as List).map((e) => ChannelMember(
       channelId: e['channel_id'],
@@ -172,19 +185,18 @@ final pendingRequestsProvider = StreamProvider<List<ChannelMember>>((ref) async*
 
   yield await fetchRequests();
 
+  // Écoute realtime uniquement sur channel_members
   final realtimeChannel = _client
-    .channel('pending_requests:$userId')
-    .onPostgresChanges(
-      event: PostgresChangeEvent.all,
-      schema: 'public',
-      table: 'channel_members',
-      callback: (_) => ref.invalidateSelf(),
-    )
-    .subscribe();
+      .channel('pending_requests:$userId')
+      .onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'channel_members',
+        callback: (_) => ref.invalidateSelf(),
+      )
+      .subscribe();
 
-  ref.onDispose(() {
-    realtimeChannel.unsubscribe();
-  });
+  ref.onDispose(() => realtimeChannel.unsubscribe());
 
   await for (final _ in Stream.periodic(const Duration(seconds: 15))) {
     yield await fetchRequests();
