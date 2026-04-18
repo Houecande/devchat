@@ -260,7 +260,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }
 
     final requests = pendingRequestsAsync.value ?? [];
-    final channels = channelsAsync.value ?? [];
 
     return membershipsAsync.when(
       loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
