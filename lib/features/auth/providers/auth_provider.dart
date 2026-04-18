@@ -1,25 +1,38 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final supabaseClient = Supabase.instance.client;
 
-// Provider qui écoute l'état auth en temps réel
+// ─── Auth Change Notifier (pour go_router) ─────────────────
+class AuthChangeNotifier extends ChangeNotifier {
+  AuthChangeNotifier() {
+    Supabase.instance.client.auth.onAuthStateChange.listen((_) {
+      notifyListeners();
+    });
+  }
+}
+
+final authChangeNotifierProvider = Provider<AuthChangeNotifier>((ref) {
+  return AuthChangeNotifier();
+});
+
+// ─── Stream auth state ─────────────────────────────────────
 final authStateProvider = StreamProvider<AuthState>((ref) {
   return supabaseClient.auth.onAuthStateChange;
 });
 
-// Provider de l'utilisateur connecté
+// ─── Utilisateur connecté ──────────────────────────────────
 final currentUserProvider = Provider<User?>((ref) {
   return supabaseClient.auth.currentUser;
 });
 
-// Notifier pour les actions auth
+// ─── Auth Notifier (actions) ───────────────────────────────
 class AuthNotifier extends StateNotifier<AsyncValue<void>> {
   AuthNotifier() : super(const AsyncValue.data(null));
 
   final _client = Supabase.instance.client;
 
-  // Login email + password
   Future<void> signIn({
     required String email,
     required String password,
@@ -36,7 +49,6 @@ class AuthNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
-  // Register email + password
   Future<void> signUp({
     required String email,
     required String password,
@@ -55,7 +67,6 @@ class AuthNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
-  // GitHub OAuth
   Future<void> signInWithGitHub() async {
     state = const AsyncValue.loading();
     try {
@@ -69,7 +80,6 @@ class AuthNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
-  // Logout
   Future<void> signOut() async {
     await _client.auth.signOut();
     state = const AsyncValue.data(null);
