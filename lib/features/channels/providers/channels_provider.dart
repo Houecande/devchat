@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
+import 'dart:async';
 
 final _client = Supabase.instance.client;
 
@@ -106,17 +107,37 @@ class ChannelMember {
 // Liste des salons
 final channelsProvider = StreamProvider<List<Channel>>((ref) async* {
   Future<List<Channel>> fetch() async {
-    final data = await _client.from('channels').select().order('created_at', ascending: true);
+    final data = await _client
+        .from('channels')
+        .select()
+        .order('created_at', ascending: true);
     return (data as List).map((e) => Channel.fromMap(e)).toList();
   }
+
+  // Émettre les données initiales
   yield await fetch();
-  _client.channel('channels_realtime').onPostgresChanges(
-    event: PostgresChangeEvent.all, schema: 'public', table: 'channels',
-    callback: (_) => ref.invalidateSelf(),
-  ).subscribe();
-  await for (final _ in Stream.periodic(const Duration(minutes: 5))) {
-    yield await fetch();
-  }
+
+  // Écouter les changements en temps réel
+  final controller = StreamController<List<Channel>>();
+
+  final realtimeChannel = _client
+      .channel('channels_changes')
+      .onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'channels',
+        callback: (_) async {
+          controller.add(await fetch());
+        },
+      )
+      .subscribe();
+
+  ref.onDispose(() {
+    realtimeChannel.unsubscribe();
+    controller.close();
+  });
+
+  yield* controller.stream;
 });
 
 // Adhésions de l'utilisateur
@@ -134,38 +155,38 @@ final pendingRequestsProvider = StreamProvider<List<ChannelMember>>((ref) async*
   final userId = _client.auth.currentUser?.id;
   if (userId == null) { yield []; return; }
 
-  // 1. Trouver les salons créés par l'utilisateur
-  final myChannels = await _client.from('channels').select('id').eq('created_by', userId);
-  final channelIds = (myChannels as List).map((c) => c['id'].toString()).toList();
-  
-  if (channelIds.isEmpty) { yield []; return; }
-
   Future<List<ChannelMember>> fetchRequests() async {
-    final data = await _client.from('channel_members')
-        .select('channel_id, user_id, status')
-        .filter('channel_id', 'in', channelIds)
+    // Récupérer directement les demandes sur les channels dont on est créateur
+    final data = await _client
+        .from('channel_members')
+        .select('channel_id, user_id, status, profiles(username)')
         .eq('status', 'pending');
+
     return (data as List).map((e) => ChannelMember(
-      channelId: e['channel_id'], userId: e['user_id'], status: e['status'],
-      username: "Utilisateur ${e['user_id'].toString().substring(0, 4)}",
+      channelId: e['channel_id'],
+      userId: e['user_id'],
+      status: e['status'],
+      username: e['profiles']?['username'] ?? 'Utilisateur',
     )).toList();
   }
 
   yield await fetchRequests();
 
-  // Écoute en temps réel des demandes
-  final channel = _client.channel('public:channel_members');
-  channel.onPostgresChanges(
-    event: PostgresChangeEvent.all,
-    schema: 'public',
-    table: 'channel_members',
-    callback: (payload) {
-      ref.invalidateSelf();
-    },
-  ).subscribe();
+  final realtimeChannel = _client
+    .channel('pending_requests:$userId')
+    .onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'channel_members',
+      callback: (_) => ref.invalidateSelf(),
+    )
+    .subscribe();
 
-  // Refresh toutes les 30 sec au cas où le realtime échoue
-  await for (final _ in Stream.periodic(const Duration(seconds: 30))) {
+  ref.onDispose(() {
+    realtimeChannel.unsubscribe();
+  });
+
+  await for (final _ in Stream.periodic(const Duration(seconds: 15))) {
     yield await fetchRequests();
   }
 });
@@ -256,21 +277,19 @@ final createChannelProvider = Provider((ref) {
 
 final deleteChannelProvider = Provider((ref) {
   return (String channelId) async {
-    // 1. On supprime les dépendances d'abord pour être sûr
-    try {
-      await _client.from('messages').delete().eq('channel_id', channelId);
-      await _client.from('channel_members').delete().eq('channel_id', channelId);
-      
-      // 2. On supprime le salon
-      final response = await _client.from('channels').delete().eq('id', channelId).select();
-      
-      if ((response as List).isEmpty) {
-        throw Exception("Aucun salon supprimé. Vérifiez vos droits.");
-      }
+    // Supabase CASCADE s'occupe des messages et members automatiquement
+    // grâce au ON DELETE CASCADE défini dans le schéma
+    final response = await _client
+        .from('channels')
+        .delete()
+        .eq('id', channelId)
+        .select();
 
-      ref.invalidate(userMembershipsProvider);
-    } catch (e) {
-      rethrow;
+    if ((response as List).isEmpty) {
+      throw Exception("Suppression impossible. Vérifiez vos droits.");
     }
+
+    ref.invalidate(channelsProvider);
+    ref.invalidate(userMembershipsProvider);
   };
 });

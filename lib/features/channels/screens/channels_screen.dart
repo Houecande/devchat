@@ -141,11 +141,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 itemCount: requests.length,
                 itemBuilder: (context, index) {
                   final req = requests[index];
-                  final channel = channels.firstWhere((c) => c.id == req.channelId, orElse: () => Channel(id: '', name: '?', createdAt: DateTime.now()));
+                  final ch = channels.firstWhere((c) => c.id == req.channelId, orElse: () => Channel(id: '', name: '?', createdAt: DateTime.now()));
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(req.username ?? 'Utilisateur', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                    subtitle: Text('veut rejoindre #${channel.name}', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                    subtitle: Text('veut rejoindre #${ch.name}', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

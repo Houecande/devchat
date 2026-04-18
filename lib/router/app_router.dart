@@ -18,7 +18,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isLoggedIn = session != null;
       final loc = state.matchedLocation;
 
-      if (loc == '/splash') return null;
+      if (loc == '/splash') {
+            return isLoggedIn ? '/channels' : '/login';
+          }
 
       final isAuthRoute = loc == '/login' || loc == '/register';
 
