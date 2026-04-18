@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+SUPABASE_URL= https://aarbdvdidtyakunfmzwe.supabase.co
+SUPABASE_ANON_KEY=sb_publishable_SAHLuFwiRG0zS55GaEm42w_B7MIvPmi
+.env
+*.env
+lib/core/constants/supabase_keys.dart 
