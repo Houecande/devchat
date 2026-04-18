@@ -5,7 +5,8 @@ import '../features/auth/providers/auth_provider.dart';
 import '../features/auth/screens/splash_screen.dart';
 import '../features/auth/screens/login_screen.dart';
 import '../features/auth/screens/register_screen.dart';
-// import '../features/channels/screens/channels_screen.dart'; // à venir
+import '../features/channels/screens/channels_screen.dart';
+import '../features/channels/screens/chat_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
@@ -37,9 +38,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/channels',
-        builder: (context, state) => const Scaffold(
-          body: Center(child: Text('Channels — coming soon 🚧')),
-        ),
+        builder: (context, state) => const ChannelsScreen(),
+        routes: [
+          GoRoute(
+            path: ':channelId',
+            builder: (context, state) => ChatScreen(
+              channelId: state.pathParameters['channelId']!,
+              channelName: state.extra as String? ?? 'Channel',
+            ),
+          ),
+        ],
       ),
     ],
   );
