@@ -103,6 +103,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     }
                   } catch (e) {
                     setModalState(() => isLoading = false);
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erreur de connexion'), backgroundColor: AppTheme.error));
+                    }
                   }
                 }
               },
@@ -119,7 +122,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.background,
-        title: const Text('Demandes d\'accès', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Row(
+          children: [
+            const Icon(Icons.notifications_active_rounded, color: AppTheme.primary, size: 20),
+            const SizedBox(width: 12),
+            const Text('Demandes d\'accès', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
         content: SizedBox(
           width: 400,
           child: requests.isEmpty 
@@ -135,18 +144,24 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   final channel = channels.firstWhere((c) => c.id == req.channelId, orElse: () => Channel(id: '', name: '?', createdAt: DateTime.now()));
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(req.username ?? 'Utilisateur inconnu', style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('veut rejoindre #${channel.name}', style: const TextStyle(fontSize: 12)),
+                    title: Text(req.username ?? 'Utilisateur', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    subtitle: Text('veut rejoindre #${channel.name}', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.check_circle_rounded, color: AppTheme.success),
-                          onPressed: () => ref.read(membershipActionsProvider).respondToRequest(req.channelId, req.userId, true),
+                          icon: const Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 24),
+                          onPressed: () {
+                            ref.read(membershipActionsProvider).respondToRequest(req.channelId, req.userId, true);
+                            Navigator.pop(ctx);
+                          },
                         ),
                         IconButton(
-                          icon: const Icon(Icons.cancel_rounded, color: AppTheme.error),
-                          onPressed: () => ref.read(membershipActionsProvider).respondToRequest(req.channelId, req.userId, false),
+                          icon: const Icon(Icons.cancel_rounded, color: AppTheme.error, size: 24),
+                          onPressed: () {
+                            ref.read(membershipActionsProvider).respondToRequest(req.channelId, req.userId, false);
+                            Navigator.pop(ctx);
+                          },
                         ),
                       ],
                     ),
@@ -177,10 +192,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
           ElevatedButton(
             onPressed: () async {
-              await ref.read(membershipActionsProvider).requestAccess(channel.id);
-              if (ctx.mounted) {
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Demande envoyée !'), backgroundColor: AppTheme.primary));
+              try {
+                await ref.read(membershipActionsProvider).requestAccess(channel.id);
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Demande envoyée !'), backgroundColor: AppTheme.primary));
+                }
+              } catch (e) {
+                if (ctx.mounted) {
+                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erreur de connexion'), backgroundColor: AppTheme.error));
+                }
               }
             },
             child: const Text('Envoyer la demande'),
@@ -199,6 +220,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final width = MediaQuery.of(context).size.width;
     final isDesktop = width > 900;
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+
+    if (!isDesktop && widget.selectedChannelId != null) {
+      return ChatScreen(
+        channelId: widget.selectedChannelId!,
+        channelName: widget.selectedChannelName ?? 'Salon',
+      );
+    }
 
     Widget buildChannelList(List<Channel> channels, Map<String, String> memberships) {
       final filtered = channels.where((c) => c.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
@@ -231,15 +259,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       );
     }
 
+    final requests = pendingRequestsAsync.value ?? [];
+    final channels = channelsAsync.value ?? [];
+
     return membershipsAsync.when(
       loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (e, _) => Scaffold(body: Center(child: Text('Erreur: $e'))),
+      error: (e, _) => const Scaffold(body: Center(child: Text('Erreur de connexion'))),
       data: (memberships) => channelsAsync.when(
         loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
-        error: (e, _) => Scaffold(body: Center(child: Text('Erreur: $e'))),
+        error: (e, _) => const Scaffold(body: Center(child: Text('Erreur de connexion'))),
         data: (channels) {
-          final requests = pendingRequestsAsync.value ?? [];
-          
           if (isDesktop) {
             return Scaffold(
               body: Row(
@@ -273,11 +302,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             appBar: AppBar(
               title: const Text('DevChat'),
               actions: [
-                if (requests.isNotEmpty)
-                  IconButton(
-                    icon: Badge(label: Text(requests.length.toString()), child: const Icon(Icons.notifications_rounded)),
-                    onPressed: () => _showNotificationsDialog(requests, channels),
+                IconButton(
+                  icon: Badge(
+                    isLabelVisible: requests.isNotEmpty,
+                    label: Text(requests.length.toString()), 
+                    child: const Icon(Icons.notifications_rounded)
                   ),
+                  onPressed: () => _showNotificationsDialog(requests, channels),
+                ),
                 IconButton(icon: const Icon(Icons.logout_rounded), onPressed: () => ref.read(authNotifierProvider.notifier).signOut()),
               ],
             ),
@@ -306,15 +338,15 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           const SizedBox(width: 14),
           const Text('DevChat', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const Spacer(),
-          if (requests.isNotEmpty)
-            IconButton(
-              icon: Badge(
-                backgroundColor: AppTheme.primary,
-                label: Text(requests.length.toString(), style: const TextStyle(color: Colors.white, fontSize: 10)),
-                child: const Icon(Icons.notifications_rounded, color: AppTheme.primary, size: 24),
-              ),
-              onPressed: () => _showNotificationsDialog(requests, channels),
+          IconButton(
+            icon: Badge(
+              isLabelVisible: requests.isNotEmpty,
+              backgroundColor: AppTheme.primary,
+              label: Text(requests.length.toString(), style: const TextStyle(color: Colors.white, fontSize: 10)),
+              child: Icon(Icons.notifications_rounded, color: requests.isNotEmpty ? AppTheme.primary : AppTheme.textSecondary, size: 24),
             ),
+            onPressed: () => _showNotificationsDialog(requests, channels),
+          ),
           IconButton(
             icon: const Icon(Icons.add_circle_outline_rounded, color: AppTheme.primary, size: 24),
             onPressed: () => _showCreateChannelDialog(context, ref),

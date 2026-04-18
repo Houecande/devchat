@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../providers/channels_provider.dart';
 
-class ChannelTile extends StatelessWidget {
+class ChannelTile extends ConsumerStatefulWidget {
   final Channel channel;
   final VoidCallback onTap;
   final bool isSelected;
@@ -20,23 +22,66 @@ class ChannelTile extends StatelessWidget {
   });
 
   @override
+  ConsumerState<ChannelTile> createState() => _ChannelTileState();
+}
+
+class _ChannelTileState extends ConsumerState<ChannelTile> {
+  bool _isDeleting = false;
+
+  void _showDeleteConfirm(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.background,
+        title: const Text('Supprimer le salon ?', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Text('Voulez-vous vraiment supprimer #${widget.channel.name} ? Cette action supprimera tous les messages et est irréversible.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              setState(() => _isDeleting = true);
+              try {
+                await ref.read(deleteChannelProvider)(widget.channel.id);
+                if (mounted && widget.isSelected) {
+                  // Si le salon supprimé était sélectionné, on redirige
+                  context.go('/channels');
+                }
+              } catch (e) {
+                if (mounted) {
+                  setState(() => _isDeleting = false);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Erreur lors de la suppression : $e'), backgroundColor: AppTheme.error),
+                  );
+                }
+              }
+            },
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-    final isCreator = channel.createdBy == currentUserId;
+    final isCreator = widget.channel.createdBy == currentUserId;
+    final primary = Theme.of(context).colorScheme.primary;
     
-    // Status visual determination
     Color tileColor = Colors.transparent;
     Color iconColor = AppTheme.textSecondary.withValues(alpha: 0.5);
     IconData iconData = Icons.tag_rounded;
-    String statusText = channel.description ?? 'Aucune description';
+    String statusText = widget.channel.description ?? 'Aucune description';
 
-    if (isSelected) {
-      tileColor = AppTheme.primary.withValues(alpha: 0.1);
-      iconColor = AppTheme.primary;
+    if (widget.isSelected) {
+      tileColor = primary.withValues(alpha: 0.1);
+      iconColor = primary;
     }
 
-    if (channel.isPrivate && !isCreator && !isJoined) {
-      if (isPending) {
+    if (widget.channel.isPrivate && !isCreator && !widget.isJoined) {
+      if (widget.isPending) {
         iconData = Icons.hourglass_empty_rounded;
         statusText = 'Demande envoyée...';
         iconColor = Colors.orangeAccent.withValues(alpha: 0.7);
@@ -45,7 +90,7 @@ class ChannelTile extends StatelessWidget {
         statusText = 'Salon privé • Demander l\'accès';
       }
     } else if (isCreator) {
-      iconColor = AppTheme.primary;
+      iconColor = primary;
     }
 
     return Container(
@@ -55,7 +100,7 @@ class ChannelTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: ListTile(
-        onTap: onTap,
+        onTap: _isDeleting ? null : widget.onTap,
         dense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -63,26 +108,28 @@ class ChannelTile extends StatelessWidget {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: isSelected ? AppTheme.primary.withValues(alpha: 0.2) : AppTheme.surfaceVariant.withValues(alpha: 0.5),
+            color: widget.isSelected ? primary.withValues(alpha: 0.2) : AppTheme.surfaceVariant.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(iconData, color: iconColor, size: 20),
+          child: _isDeleting 
+            ? const SizedBox(width: 20, height: 20, child: Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2)))
+            : Icon(iconData, color: iconColor, size: 20),
         ),
         title: Row(
           children: [
             Expanded(
               child: Text(
-                channel.name,
+                widget.channel.name,
                 style: TextStyle(
-                  color: isSelected ? AppTheme.textPrimary : AppTheme.textPrimary.withValues(alpha: 0.8),
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                  color: widget.isSelected ? AppTheme.textPrimary : AppTheme.textPrimary.withValues(alpha: 0.8),
+                  fontWeight: widget.isSelected ? FontWeight.bold : FontWeight.w600,
                   fontSize: 14,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (channel.isPrivate)
+            if (widget.channel.isPrivate)
               Padding(
                 padding: const EdgeInsets.only(left: 6),
                 child: Icon(Icons.shield_rounded, size: 10, color: isCreator ? AppTheme.success : AppTheme.textSecondary.withValues(alpha: 0.4)),
@@ -92,15 +139,20 @@ class ChannelTile extends StatelessWidget {
         subtitle: Text(
           statusText,
           style: TextStyle(
-              color: isSelected ? AppTheme.textSecondary : AppTheme.textSecondary.withValues(alpha: 0.5),
+              color: widget.isSelected ? AppTheme.textSecondary : AppTheme.textSecondary.withValues(alpha: 0.5),
               fontSize: 11,
-              fontStyle: (channel.isPrivate && !isJoined) ? FontStyle.italic : null),
+              fontStyle: (widget.channel.isPrivate && !widget.isJoined) ? FontStyle.italic : null),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        trailing: (channel.isPrivate && !isJoined && !isPending)
-          ? Icon(Icons.add_circle_outline_rounded, size: 18, color: AppTheme.primary.withValues(alpha: 0.5))
-          : null,
+        trailing: isCreator && !_isDeleting
+          ? IconButton(
+              icon: Icon(Icons.delete_outline_rounded, size: 18, color: AppTheme.error.withValues(alpha: 0.5)),
+              onPressed: () => _showDeleteConfirm(context),
+            )
+          : (widget.channel.isPrivate && !widget.isJoined && !widget.isPending)
+            ? Icon(Icons.add_circle_outline_rounded, size: 18, color: primary.withValues(alpha: 0.5))
+            : null,
       ),
     );
   }

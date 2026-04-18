@@ -41,6 +41,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
     final isDesktop = MediaQuery.of(context).size.width > 600;
+    final primary = Theme.of(context).colorScheme.primary;
 
     ref.listen(authNotifierProvider, (_, next) {
       if (next is AsyncError) {
@@ -73,7 +74,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(Icons.code_rounded, size: 84, color: AppTheme.primary),
+                    Icon(Icons.code_rounded, size: 84, color: primary),
                     const SizedBox(height: 24),
                     const Text(
                       'DevChat',
@@ -161,14 +162,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                     TextButton(
                       onPressed: () => context.go('/register'),
-                      child: const Text.rich(
+                      child: Text.rich(
                         TextSpan(
                           text: 'Pas encore de compte ? ',
-                          style: TextStyle(color: AppTheme.textSecondary),
+                          style: const TextStyle(color: AppTheme.textSecondary),
                           children: [
                             TextSpan(
                               text: "S'inscrire",
-                              style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
+                              style: TextStyle(color: primary, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),

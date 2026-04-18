@@ -28,72 +28,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _focusNode = FocusNode();
   bool _isCode = false;
   String _selectedLanguage = 'dart';
+  bool _showScrollButton = false;
 
   final List<String> _languages = [
     'dart', 'javascript', 'python', 'typescript', 'kotlin', 'swift', 'java',
     'cpp', 'bash', 'json', 'csharp', 'go', 'ruby', 'rust', 'php', 'sql', 'yaml', 'xml'
   ]..sort();
 
-  void _showLanguagePicker() {
-    String searchQuery = '';
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.background,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) {
-          final filtered = _languages
-              .where((l) => l.toLowerCase().contains(searchQuery.toLowerCase()))
-              .toList();
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.7,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              children: [
-                const SizedBox(height: 12),
-                Container(width: 40, height: 4, decoration: BoxDecoration(color: AppTheme.surfaceVariant, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 24),
-                TextField(
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    hintText: 'Rechercher un langage...',
-                    prefixIcon: Icon(Icons.search_rounded),
-                  ),
-                  onChanged: (v) => setModalState(() => searchQuery = v),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: filtered.length,
-                    itemBuilder: (context, index) {
-                      final lang = filtered[index];
-                      return ListTile(
-                        title: Text(lang, style: const TextStyle(color: Colors.white, fontSize: 14)),
-                        selected: lang == _selectedLanguage,
-                        selectedTileColor: AppTheme.primary.withValues(alpha: 0.1),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        onTap: () {
-                          setState(() => _selectedLanguage = lang);
-                          Navigator.pop(context);
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (MediaQuery.of(context).size.width > 900) {
         _focusNode.requestFocus();
@@ -101,16 +46,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
+  void _onScroll() {
+    final show = _scrollController.offset > 100;
+    if (show != _showScrollButton) {
+      setState(() => _showScrollButton = show);
+    }
+  }
+
   void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   Future<void> _send() async {
@@ -131,6 +81,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void dispose() {
     _controller.dispose();
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -138,16 +89,82 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final messages = ref.watch(messagesProvider(widget.channelId));
+    final messages = ref.watch(messagesProvider(widget.channelId)).reversed.toList();
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     final isDesktop = MediaQuery.of(context).size.width > 900;
+    final primary = Theme.of(context).colorScheme.primary;
 
-    ref.listen(
-        messagesProvider(widget.channelId), (_, __) => _scrollToBottom());
+    Widget chatContent = Stack(
+      children: [
+        Column(
+          children: [
+            if (widget.isEmbedded) _buildHeader(messages.length, primary),
+            Expanded(
+              child: messages.isEmpty
+                  ? _buildEmptyState()
+                  : ListView.builder(
+                      controller: _scrollController,
+                      reverse: true,
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) {
+                        final msg = messages[index];
+                        return MessageBubble(
+                          message: msg,
+                          isMe: msg.userId == currentUserId,
+                        );
+                      },
+                    ),
+            ),
+            _buildInputSection(isDesktop, primary),
+          ],
+        ),
+        if (_showScrollButton)
+          Positioned(
+            right: 16,
+            bottom: isDesktop ? 160 : 100,
+            child: FloatingActionButton.small(
+              backgroundColor: primary,
+              foregroundColor: Colors.white,
+              onPressed: _scrollToBottom,
+              child: const Icon(Icons.arrow_downward_rounded),
+            ),
+          ),
+      ],
+    );
 
-    Widget inputSection = Container(
+    if (widget.isEmbedded) {
+      return Material(color: Theme.of(context).scaffoldBackgroundColor, child: chatContent);
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          children: [
+            Icon(Icons.tag_rounded, color: primary, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.channelName,
+                      style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text('${messages.length} messages',
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      body: chatContent,
+    );
+  }
+
+  Widget _buildInputSection(bool isDesktop, Color primary) {
+    return Container(
       decoration: BoxDecoration(
-        color: AppTheme.background,
+        color: Theme.of(context).scaffoldBackgroundColor,
         border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.05), width: 1)),
       ),
       padding: EdgeInsets.symmetric(
@@ -166,6 +183,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     icon: Icons.text_fields_rounded,
                     label: 'Texte',
                     isActive: !_isCode,
+                    primary: primary,
                     onTap: () => setState(() => _isCode = false),
                   ),
                   const SizedBox(width: 8),
@@ -173,6 +191,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     icon: Icons.code_rounded,
                     label: 'Code',
                     isActive: _isCode,
+                    primary: primary,
                     onTap: () => setState(() => _isCode = true),
                   ),
                   if (_isCode) ...[
@@ -248,7 +267,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    _buildSendButton(),
+                    _buildSendButton(primary),
                   ],
                 ),
               ),
@@ -257,59 +276,67 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
       ),
     );
+  }
 
-    Widget chatContent = Column(
-      children: [
-        if (widget.isEmbedded) _buildHeader(messages.length),
-        Expanded(
-          child: messages.isEmpty
-              ? _buildEmptyState()
-              : ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final msg = messages[index];
-                    return MessageBubble(
-                      message: msg,
-                      isMe: msg.userId == currentUserId,
-                    );
-                  },
-                ),
-        ),
-        inputSection,
-      ],
-    );
-
-    if (widget.isEmbedded) {
-      return Material(color: AppTheme.background, child: chatContent);
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            const Icon(Icons.tag_rounded, color: AppTheme.primary, size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(widget.channelName,
-                      style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 16)),
-                  Text('${messages.length} messages',
-                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
-                ],
-              ),
-            ),
-          ],
-        ),
+  void _showLanguagePicker() {
+    final primary = Theme.of(context).colorScheme.primary;
+    String searchQuery = '';
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      body: chatContent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final filtered = _languages
+              .where((l) => l.toLowerCase().contains(searchQuery.toLowerCase()))
+              .toList();
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.7,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(width: 40, height: 4, decoration: BoxDecoration(color: AppTheme.surfaceVariant, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(height: 24),
+                TextField(
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Rechercher un langage...',
+                    prefixIcon: Icon(Icons.search_rounded),
+                  ),
+                  onChanged: (v) => setModalState(() => searchQuery = v),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: filtered.length,
+                    itemBuilder: (context, index) {
+                      final lang = filtered[index];
+                      return ListTile(
+                        title: Text(lang, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                        selected: lang == _selectedLanguage,
+                        selectedTileColor: primary.withValues(alpha: 0.1),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        onTap: () {
+                          setState(() => _selectedLanguage = lang);
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildToggle({required IconData icon, required String label, required bool isActive, required VoidCallback onTap}) {
+  Widget _buildToggle({required IconData icon, required String label, required bool isActive, required Color primary, required VoidCallback onTap}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
@@ -317,29 +344,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? AppTheme.primary.withValues(alpha: 0.1) : Colors.transparent,
+          color: isActive ? primary.withValues(alpha: 0.1) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: isActive ? AppTheme.primary.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.05), width: 1),
+          border: Border.all(color: isActive ? primary.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.05), width: 1),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 16, color: isActive ? AppTheme.primary : AppTheme.textSecondary),
+            Icon(icon, size: 16, color: isActive ? primary : AppTheme.textSecondary),
             const SizedBox(width: 8),
-            Text(label, style: TextStyle(color: isActive ? AppTheme.primary : AppTheme.textSecondary, fontWeight: FontWeight.w600, fontSize: 12)),
+            Text(label, style: TextStyle(color: isActive ? primary : AppTheme.textSecondary, fontWeight: FontWeight.w600, fontSize: 12)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSendButton() {
+  Widget _buildSendButton(Color primary) {
     return GestureDetector(
       onTap: _send,
       child: Container(
         width: 52,
         height: 52,
         decoration: BoxDecoration(
-          color: AppTheme.primary,
+          color: primary,
           borderRadius: BorderRadius.circular(14),
         ),
         child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
@@ -347,16 +374,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  Widget _buildHeader(int count) {
+  Widget _buildHeader(int count, Color primary) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
-        color: AppTheme.background,
+        color: Theme.of(context).scaffoldBackgroundColor,
         border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05), width: 1)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.tag_rounded, color: AppTheme.primary, size: 24),
+          Icon(Icons.tag_rounded, color: primary, size: 24),
           const SizedBox(width: 12),
           Text(widget.channelName,
               style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18)),

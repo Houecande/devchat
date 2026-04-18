@@ -1,28 +1,62 @@
 import 'package:flutter/material.dart';
-import 'package:devchat/core/theme/app_theme.dart';
+import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/theme/app_theme.dart';
 
-class SplashScreen extends StatelessWidget {
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
   @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _navigateToNext();
+  }
+
+  Future<void> _navigateToNext() async {
+    await Future.delayed(const Duration(seconds: 2));
+    
+    if (!mounted) return;
+
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session != null) {
+      context.go('/channels');
+    } else {
+      context.go('/login');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return Scaffold(
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.code, size: 64, color: AppTheme.primary),
-            SizedBox(height: 16),
-            Text(
+            Icon(Icons.terminal_rounded, size: 80, color: primary),
+            const SizedBox(height: 24),
+            const Text(
               'DevChat',
               style: TextStyle(
-                fontSize: 32,
+                fontSize: 36,
                 fontWeight: FontWeight.bold,
                 color: AppTheme.textPrimary,
+                letterSpacing: -1,
               ),
             ),
-            SizedBox(height: 32),
-            CircularProgressIndicator(color: AppTheme.primary),
+            const SizedBox(height: 8),
+            Text(
+              'Le chat pour les développeurs',
+              style: TextStyle(color: AppTheme.textSecondary.withValues(alpha: 0.7), fontSize: 16),
+            ),
+            const SizedBox(height: 48),
+            CircularProgressIndicator(strokeWidth: 3, color: primary),
           ],
         ),
       ),

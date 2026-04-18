@@ -29,12 +29,14 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
         color: AppTheme.codeBackground,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.surfaceVariant, width: 1.5),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -42,9 +44,9 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
           // Header avec langage + bouton copier
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: const BoxDecoration(
-              color: AppTheme.surfaceVariant,
-              borderRadius: BorderRadius.only(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(10),
                 topRight: Radius.circular(10),
               ),
@@ -54,18 +56,18 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.code_rounded, size: 14, color: AppTheme.primary),
+                    Icon(Icons.code_rounded, size: 14, color: primary),
                     const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: AppTheme.background.withValues(alpha: 0.5),
+                        color: Colors.black.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         widget.language.toUpperCase(),
-                        style: const TextStyle(
-                          color: AppTheme.primary,
+                        style: TextStyle(
+                          color: primary,
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                           fontFamily: 'monospace',
@@ -94,15 +96,17 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
                       ),
                     );
                   },
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     child: Row(
                       children: [
-                        Icon(Icons.copy_all_rounded, size: 16, color: AppTheme.textSecondary),
-                        SizedBox(width: 4),
+                        const Icon(Icons.copy_all_rounded, size: 16, color: AppTheme.textSecondary),
+                        const SizedBox(width: 4),
                         Text('Copier',
                             style: TextStyle(
-                                color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
+                                color: AppTheme.textSecondary.withValues(alpha: 0.7), 
+                                fontSize: 12, 
+                                fontWeight: FontWeight.w500)),
                       ],
                     ),
                   ),
@@ -117,7 +121,7 @@ class _CodeBlockWidgetState extends State<CodeBlockWidget> {
             child: SingleChildScrollView(
               controller: _scrollController,
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(bottom: 12), // Espace pour la scrollbar
+              padding: const EdgeInsets.only(bottom: 12),
               child: HighlightView(
                 widget.code,
                 language: widget.language,

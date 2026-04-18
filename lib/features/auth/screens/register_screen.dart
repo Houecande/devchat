@@ -41,6 +41,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
     final isDesktop = MediaQuery.of(context).size.width > 600;
+    final primary = Theme.of(context).colorScheme.primary;
 
     ref.listen(authNotifierProvider, (_, next) {
       if (next is AsyncError) {
@@ -87,7 +88,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               padding: const EdgeInsets.all(32),
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 400),
-                child: _emailSent ? _buildEmailSentView() : _buildRegisterForm(authState),
+                child: _emailSent ? _buildEmailSentView(primary) : _buildRegisterForm(authState, primary),
               ),
             ),
           ),
@@ -96,7 +97,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     );
   }
 
-  Widget _buildEmailSentView() {
+  Widget _buildEmailSentView(Color primary) {
     return Column(
       key: const ValueKey('email_sent'),
       mainAxisAlignment: MainAxisAlignment.center,
@@ -126,7 +127,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           style: const TextStyle(color: AppTheme.textSecondary, fontSize: 16, height: 1.5),
         ),
         const SizedBox(height: 48),
-        const CircularProgressIndicator(color: AppTheme.primary),
+        CircularProgressIndicator(color: primary),
         const SizedBox(height: 24),
         const Text(
           'Redirection automatique après confirmation...',
@@ -141,14 +142,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     );
   }
 
-  Widget _buildRegisterForm(AsyncValue authState) {
+  Widget _buildRegisterForm(AsyncValue authState, Color primary) {
     return Form(
       key: _formKey,
       child: Column(
         key: const ValueKey('register_form'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(Icons.person_add_rounded, size: 84, color: AppTheme.primary),
+          Icon(Icons.person_add_rounded, size: 84, color: primary),
           const SizedBox(height: 24),
           const Text(
             'Créer un compte',
@@ -221,14 +222,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           const SizedBox(height: 24),
           TextButton(
             onPressed: () => context.go('/login'),
-            child: const Text.rich(
+            child: Text.rich(
               TextSpan(
                 text: 'Déjà un compte ? ',
-                style: TextStyle(color: AppTheme.textSecondary),
+                style: const TextStyle(color: AppTheme.textSecondary),
                 children: [
                   TextSpan(
                     text: 'Se connecter',
-                    style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
+                    style: TextStyle(color: primary, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
