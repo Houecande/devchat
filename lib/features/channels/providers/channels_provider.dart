@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -107,7 +107,7 @@ class ChannelMember {
 class AppNotification {
   final String id;
   final String userId;
-  final String type; // 'accepted' | 'rejected'
+  final String type;
   final String channelId;
   final bool isRead;
   final DateTime createdAt;
@@ -150,12 +150,14 @@ final channelsProvider = StreamProvider<List<Channel>>((ref) async* {
   final controller = StreamController<List<Channel>>();
 
   final realtimeChannel = _client
-      .channel('channels_changes')
+      .channel('channels_changes_${DateTime.now().millisecondsSinceEpoch}')
       .onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
         table: 'channels',
-        callback: (_) async => controller.add(await fetch()),
+        callback: (_) async {
+          if (!controller.isClosed) controller.add(await fetch());
+        },
       )
       .subscribe();
 
@@ -169,7 +171,6 @@ final channelsProvider = StreamProvider<List<Channel>>((ref) async* {
 
 // ─── Memberships Provider ──────────────────────────────────
 
-// Realtime : membership du user courant
 final userMembershipsProvider = StreamProvider<Map<String, String>>((ref) async* {
   final userId = _client.auth.currentUser?.id;
   if (userId == null) { yield {}; return; }
@@ -180,7 +181,7 @@ final userMembershipsProvider = StreamProvider<Map<String, String>>((ref) async*
           .from('channel_members')
           .select('channel_id, status')
           .eq('user_id', userId);
-      return {for (var item in data as List) item['channel_id']: item['status']};
+      return { for (var item in data as List) item['channel_id']: item['status'] };
     } catch (_) { return {}; }
   }
 
@@ -189,7 +190,7 @@ final userMembershipsProvider = StreamProvider<Map<String, String>>((ref) async*
   final controller = StreamController<Map<String, String>>();
 
   final realtimeChannel = _client
-      .channel('memberships:$userId')
+      .channel('memberships_$userId')
       .onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
@@ -199,7 +200,9 @@ final userMembershipsProvider = StreamProvider<Map<String, String>>((ref) async*
           column: 'user_id',
           value: userId,
         ),
-        callback: (_) async => controller.add(await fetch()),
+        callback: (_) async {
+          if (!controller.isClosed) controller.add(await fetch());
+        },
       )
       .subscribe();
 
@@ -211,7 +214,7 @@ final userMembershipsProvider = StreamProvider<Map<String, String>>((ref) async*
   yield* controller.stream;
 });
 
-// ─── Pending Requests Provider (pour le créateur) ──────────
+// ─── Pending Requests Provider ─────────────────────────────
 
 final pendingRequestsProvider = StreamProvider<List<ChannelMember>>((ref) async* {
   final userId = _client.auth.currentUser?.id;
@@ -253,7 +256,9 @@ final pendingRequestsProvider = StreamProvider<List<ChannelMember>>((ref) async*
         event: PostgresChangeEvent.all,
         schema: 'public',
         table: 'channel_members',
-        callback: (_) async => controller.add(await fetchRequests()),
+        callback: (_) async {
+          if (!controller.isClosed) controller.add(await fetchRequests());
+        },
       )
       .subscribe();
 
@@ -265,7 +270,7 @@ final pendingRequestsProvider = StreamProvider<List<ChannelMember>>((ref) async*
   yield* controller.stream;
 });
 
-// ─── Notifications du demandeur ────────────────────────────
+// ─── Notifications Provider ────────────────────────────────
 
 final myNotificationsProvider = StreamProvider<List<AppNotification>>((ref) async* {
   final userId = _client.auth.currentUser?.id;
@@ -296,7 +301,9 @@ final myNotificationsProvider = StreamProvider<List<AppNotification>>((ref) asyn
           column: 'user_id',
           value: userId,
         ),
-        callback: (_) async => controller.add(await fetch()),
+        callback: (_) async {
+          if (!controller.isClosed) controller.add(await fetch());
+        },
       )
       .subscribe();
 
@@ -323,37 +330,35 @@ class MembershipActions {
       'user_id': userId,
       'status': 'pending',
     });
+    ref.invalidate(userMembershipsProvider);
   }
 
   Future<void> respondToRequest(
       String channelId, String userId, bool accept) async {
     if (accept) {
-      // 1. Accepter la demande
       await _client
           .from('channel_members')
           .update({'status': 'joined'})
           .match({'channel_id': channelId, 'user_id': userId});
-
-      // 2. Notifier le demandeur
       await _client.from('notifications').insert({
         'user_id': userId,
         'type': 'accepted',
         'channel_id': channelId,
       });
     } else {
-      // 1. Refuser → supprimer la demande
       await _client
           .from('channel_members')
           .delete()
           .match({'channel_id': channelId, 'user_id': userId});
-
-      // 2. Notifier le demandeur
       await _client.from('notifications').insert({
         'user_id': userId,
         'type': 'rejected',
         'channel_id': channelId,
       });
     }
+    ref.invalidate(channelsProvider);
+    ref.invalidate(userMembershipsProvider);
+    ref.invalidate(pendingRequestsProvider);
   }
 
   Future<void> markNotificationRead(String notifId) async {
@@ -466,6 +471,7 @@ final createChannelProvider = Provider((ref) {
       'created_by': userId,
       'is_private': isPrivate,
     });
+    ref.invalidate(channelsProvider);
   };
 });
 
@@ -478,7 +484,7 @@ final deleteChannelProvider = Provider((ref) {
         .select();
 
     if ((response as List).isEmpty) {
-      throw Exception("Suppression impossible. Vérifiez vos droits.");
+      throw Exception('Suppression impossible. Verifiez vos droits.');
     }
 
     ref.invalidate(channelsProvider);
