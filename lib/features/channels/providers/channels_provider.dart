@@ -1,7 +1,8 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
-import 'dart:async';
 
 final _client = Supabase.instance.client;
 
@@ -62,10 +63,11 @@ class Message {
   });
 
   Message copyWith({MessageStatus? status}) => Message(
-    id: id, channelId: channelId, userId: userId, content: content,
-    type: type, language: language, createdAt: createdAt,
-    username: username, avatarUrl: avatarUrl, status: status ?? this.status,
-  );
+        id: id, channelId: channelId, userId: userId, content: content,
+        type: type, language: language, createdAt: createdAt,
+        username: username, avatarUrl: avatarUrl,
+        status: status ?? this.status,
+      );
 
   factory Message.fromMap(Map<String, dynamic> map) => Message(
         id: map['id'],
@@ -102,9 +104,38 @@ class ChannelMember {
       );
 }
 
-// ─── Providers ─────────────────────────────────────────────
+class AppNotification {
+  final String id;
+  final String userId;
+  final String type; // 'accepted' | 'rejected'
+  final String channelId;
+  final bool isRead;
+  final DateTime createdAt;
+  String? channelName;
 
-// Liste des salons
+  AppNotification({
+    required this.id,
+    required this.userId,
+    required this.type,
+    required this.channelId,
+    required this.isRead,
+    required this.createdAt,
+    this.channelName,
+  });
+
+  factory AppNotification.fromMap(Map<String, dynamic> map) => AppNotification(
+        id: map['id'],
+        userId: map['user_id'],
+        type: map['type'],
+        channelId: map['channel_id'],
+        isRead: map['is_read'] ?? false,
+        createdAt: DateTime.parse(map['created_at']),
+        channelName: map['channels']?['name'],
+      );
+}
+
+// ─── Channels Provider ─────────────────────────────────────
+
 final channelsProvider = StreamProvider<List<Channel>>((ref) async* {
   Future<List<Channel>> fetch() async {
     final data = await _client
@@ -114,10 +145,8 @@ final channelsProvider = StreamProvider<List<Channel>>((ref) async* {
     return (data as List).map((e) => Channel.fromMap(e)).toList();
   }
 
-  // Émettre les données initiales
   yield await fetch();
 
-  // Écouter les changements en temps réel
   final controller = StreamController<List<Channel>>();
 
   final realtimeChannel = _client
@@ -126,9 +155,7 @@ final channelsProvider = StreamProvider<List<Channel>>((ref) async* {
         event: PostgresChangeEvent.all,
         schema: 'public',
         table: 'channels',
-        callback: (_) async {
-          controller.add(await fetch());
-        },
+        callback: (_) async => controller.add(await fetch()),
       )
       .subscribe();
 
@@ -140,22 +167,57 @@ final channelsProvider = StreamProvider<List<Channel>>((ref) async* {
   yield* controller.stream;
 });
 
-// Adhésions de l'utilisateur
-final userMembershipsProvider = FutureProvider<Map<String, String>>((ref) async {
+// ─── Memberships Provider ──────────────────────────────────
+
+// Realtime : membership du user courant
+final userMembershipsProvider = StreamProvider<Map<String, String>>((ref) async* {
   final userId = _client.auth.currentUser?.id;
-  if (userId == null) return {};
-  try {
-    final data = await _client.from('channel_members').select('channel_id, status').eq('user_id', userId);
-    return { for (var item in data as List) item['channel_id'] : item['status'] };
-  } catch (e) { return {}; }
+  if (userId == null) { yield {}; return; }
+
+  Future<Map<String, String>> fetch() async {
+    try {
+      final data = await _client
+          .from('channel_members')
+          .select('channel_id, status')
+          .eq('user_id', userId);
+      return {for (var item in data as List) item['channel_id']: item['status']};
+    } catch (_) { return {}; }
+  }
+
+  yield await fetch();
+
+  final controller = StreamController<Map<String, String>>();
+
+  final realtimeChannel = _client
+      .channel('memberships:$userId')
+      .onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'channel_members',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'user_id',
+          value: userId,
+        ),
+        callback: (_) async => controller.add(await fetch()),
+      )
+      .subscribe();
+
+  ref.onDispose(() {
+    realtimeChannel.unsubscribe();
+    controller.close();
+  });
+
+  yield* controller.stream;
 });
+
+// ─── Pending Requests Provider (pour le créateur) ──────────
 
 final pendingRequestsProvider = StreamProvider<List<ChannelMember>>((ref) async* {
   final userId = _client.auth.currentUser?.id;
   if (userId == null) { yield []; return; }
 
   Future<List<ChannelMember>> fetchRequests() async {
-    // 1. Récupérer uniquement les channels dont je suis créateur
     final myChannels = await _client
         .from('channels')
         .select('id')
@@ -165,10 +227,8 @@ final pendingRequestsProvider = StreamProvider<List<ChannelMember>>((ref) async*
         .map((c) => c['id'].toString())
         .toList();
 
-    // 2. Si je ne suis créateur d'aucun channel → aucune notif
     if (myChannelIds.isEmpty) return [];
 
-    // 3. Récupérer les demandes pending sur MES channels uniquement
     final data = await _client
         .from('channel_members')
         .select('channel_id, user_id, status, profiles(username)')
@@ -176,32 +236,79 @@ final pendingRequestsProvider = StreamProvider<List<ChannelMember>>((ref) async*
         .inFilter('channel_id', myChannelIds);
 
     return (data as List).map((e) => ChannelMember(
-      channelId: e['channel_id'],
-      userId: e['user_id'],
-      status: e['status'],
-      username: e['profiles']?['username'] ?? 'Utilisateur',
-    )).toList();
+          channelId: e['channel_id'],
+          userId: e['user_id'],
+          status: e['status'],
+          username: e['profiles']?['username'] ?? 'Utilisateur',
+        )).toList();
   }
 
   yield await fetchRequests();
 
-  // Écoute realtime uniquement sur channel_members
+  final controller = StreamController<List<ChannelMember>>();
+
   final realtimeChannel = _client
       .channel('pending_requests:$userId')
       .onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
         table: 'channel_members',
-        callback: (_) => ref.invalidateSelf(),
+        callback: (_) async => controller.add(await fetchRequests()),
       )
       .subscribe();
 
-  ref.onDispose(() => realtimeChannel.unsubscribe());
+  ref.onDispose(() {
+    realtimeChannel.unsubscribe();
+    controller.close();
+  });
 
-  await for (final _ in Stream.periodic(const Duration(seconds: 15))) {
-    yield await fetchRequests();
-  }
+  yield* controller.stream;
 });
+
+// ─── Notifications du demandeur ────────────────────────────
+
+final myNotificationsProvider = StreamProvider<List<AppNotification>>((ref) async* {
+  final userId = _client.auth.currentUser?.id;
+  if (userId == null) { yield []; return; }
+
+  Future<List<AppNotification>> fetch() async {
+    final data = await _client
+        .from('notifications')
+        .select('*, channels(name)')
+        .eq('user_id', userId)
+        .eq('is_read', false)
+        .order('created_at', ascending: false);
+    return (data as List).map((e) => AppNotification.fromMap(e)).toList();
+  }
+
+  yield await fetch();
+
+  final controller = StreamController<List<AppNotification>>();
+
+  final realtimeChannel = _client
+      .channel('notifications:$userId')
+      .onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'notifications',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'user_id',
+          value: userId,
+        ),
+        callback: (_) async => controller.add(await fetch()),
+      )
+      .subscribe();
+
+  ref.onDispose(() {
+    realtimeChannel.unsubscribe();
+    controller.close();
+  });
+
+  yield* controller.stream;
+});
+
+// ─── Membership Actions ────────────────────────────────────
 
 final membershipActionsProvider = Provider((ref) => MembershipActions(ref));
 
@@ -211,18 +318,49 @@ class MembershipActions {
 
   Future<void> requestAccess(String channelId) async {
     final userId = _client.auth.currentUser!.id;
-    await _client.from('channel_members').upsert({'channel_id': channelId, 'user_id': userId, 'status': 'pending'});
-    ref.invalidate(userMembershipsProvider);
+    await _client.from('channel_members').upsert({
+      'channel_id': channelId,
+      'user_id': userId,
+      'status': 'pending',
+    });
   }
 
-  Future<void> respondToRequest(String channelId, String userId, bool accept) async {
+  Future<void> respondToRequest(
+      String channelId, String userId, bool accept) async {
     if (accept) {
-      await _client.from('channel_members').update({'status': 'joined'}).match({'channel_id': channelId, 'user_id': userId});
+      // 1. Accepter la demande
+      await _client
+          .from('channel_members')
+          .update({'status': 'joined'})
+          .match({'channel_id': channelId, 'user_id': userId});
+
+      // 2. Notifier le demandeur
+      await _client.from('notifications').insert({
+        'user_id': userId,
+        'type': 'accepted',
+        'channel_id': channelId,
+      });
     } else {
-      await _client.from('channel_members').delete().match({'channel_id': channelId, 'user_id': userId});
+      // 1. Refuser → supprimer la demande
+      await _client
+          .from('channel_members')
+          .delete()
+          .match({'channel_id': channelId, 'user_id': userId});
+
+      // 2. Notifier le demandeur
+      await _client.from('notifications').insert({
+        'user_id': userId,
+        'type': 'rejected',
+        'channel_id': channelId,
+      });
     }
-    ref.invalidate(userMembershipsProvider);
-    ref.invalidate(pendingRequestsProvider);
+  }
+
+  Future<void> markNotificationRead(String notifId) async {
+    await _client
+        .from('notifications')
+        .update({'is_read': true})
+        .eq('id', notifId);
   }
 }
 
@@ -235,62 +373,104 @@ class MessagesNotifier extends StateNotifier<List<Message>> {
 
   Future<void> load(String channelId) async {
     try {
-      final data = await _client.from('messages').select('*, profiles(username, avatar_url)')
-          .eq('channel_id', channelId).order('created_at', ascending: true);
+      final data = await _client
+          .from('messages')
+          .select('*, profiles(username, avatar_url)')
+          .eq('channel_id', channelId)
+          .order('created_at', ascending: true);
       state = (data as List).map((e) => Message.fromMap(e)).toList();
-    } catch (e) {}
+    } catch (_) {}
 
-    _subscription = _client.channel('messages:$channelId').onPostgresChanges(
-      event: PostgresChangeEvent.insert, schema: 'public', table: 'messages',
-      filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'channel_id', value: channelId),
-      callback: (payload) async {
-        final newMsg = payload.newRecord;
-        try {
-          final profile = await _client.from('profiles').select('username, avatar_url').eq('id', newMsg['user_id']).single();
-          newMsg['profiles'] = profile;
-        } catch (_) {}
-        final incoming = Message.fromMap(newMsg);
-        state = [...state.where((m) => m.id != incoming.id), incoming];
-      },
-    ).subscribe();
+    _subscription = _client
+        .channel('messages:$channelId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'channel_id',
+            value: channelId,
+          ),
+          callback: (payload) async {
+            final newMsg = payload.newRecord;
+            try {
+              final profile = await _client
+                  .from('profiles')
+                  .select('username, avatar_url')
+                  .eq('id', newMsg['user_id'])
+                  .single();
+              newMsg['profiles'] = profile;
+            } catch (_) {}
+            final incoming = Message.fromMap(newMsg);
+            state = [...state.where((m) => m.id != incoming.id), incoming];
+          },
+        )
+        .subscribe();
   }
 
-  Future<void> sendMessage({required String channelId, required String content, String type = 'text', String? language, String? retryId}) async {
+  Future<void> sendMessage({
+    required String channelId,
+    required String content,
+    String type = 'text',
+    String? language,
+    String? retryId,
+  }) async {
     final userId = _client.auth.currentUser!.id;
     final tempId = retryId ?? _uuid.v4();
-    final tempMsg = Message(id: tempId, channelId: channelId, userId: userId, content: content, type: type, language: language, createdAt: DateTime.now(), status: MessageStatus.sending);
-    if (retryId == null) state = [...state, tempMsg];
-    else state = [for (final m in state) if (m.id == tempId) tempMsg else m];
+    final tempMsg = Message(
+      id: tempId, channelId: channelId, userId: userId,
+      content: content, type: type, language: language,
+      createdAt: DateTime.now(), status: MessageStatus.sending,
+    );
+    if (retryId == null) {
+      state = [...state, tempMsg];
+    } else {
+      state = [for (final m in state) if (m.id == tempId) tempMsg else m];
+    }
     try {
-      await _client.from('messages').insert({'id': tempId, 'channel_id': channelId, 'user_id': userId, 'content': content, 'type': type, 'language': language});
-    } catch (e) {
-      state = [for (final m in state) if (m.id == tempId) m.copyWith(status: MessageStatus.error) else m];
+      await _client.from('messages').insert({
+        'id': tempId, 'channel_id': channelId, 'user_id': userId,
+        'content': content, 'type': type, 'language': language,
+      });
+    } catch (_) {
+      state = [for (final m in state)
+        if (m.id == tempId) m.copyWith(status: MessageStatus.error) else m];
     }
   }
 
   @override
-  void dispose() { _subscription?.unsubscribe(); super.dispose(); }
+  void dispose() {
+    _subscription?.unsubscribe();
+    super.dispose();
+  }
 }
 
-final messagesProvider = StateNotifierProvider.family<MessagesNotifier, List<Message>, String>((ref, channelId) {
-  final n = MessagesNotifier(); n.load(channelId); return n;
-});
+final messagesProvider =
+    StateNotifierProvider.family<MessagesNotifier, List<Message>, String>(
+  (ref, channelId) {
+    final n = MessagesNotifier();
+    n.load(channelId);
+    return n;
+  },
+);
+
+// ─── Create / Delete Channel ───────────────────────────────
 
 final createChannelProvider = Provider((ref) {
   return (String name, String? description, bool isPrivate) async {
     final userId = _client.auth.currentUser!.id;
-    try {
-      await _client.from('channels').insert({'name': name, 'description': description, 'created_by': userId, 'is_private': isPrivate});
-    } catch (e) {
-      await _client.from('channels').insert({'name': name, 'description': description, 'created_by': userId});
-    }
+    await _client.from('channels').insert({
+      'name': name,
+      'description': description,
+      'created_by': userId,
+      'is_private': isPrivate,
+    });
   };
 });
 
 final deleteChannelProvider = Provider((ref) {
   return (String channelId) async {
-    // Supabase CASCADE s'occupe des messages et members automatiquement
-    // grâce au ON DELETE CASCADE défini dans le schéma
     final response = await _client
         .from('channels')
         .delete()
