@@ -1,4 +1,4 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../features/auth/providers/auth_provider.dart';
@@ -19,11 +19,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       final loc = state.matchedLocation;
 
       if (loc == '/splash') {
-            return isLoggedIn ? '/channels' : '/login';
-          }
+        return isLoggedIn ? '/channels' : '/login';
+      }
 
       final isAuthRoute = loc == '/login' || loc == '/register';
-
       if (!isLoggedIn && !isAuthRoute) return '/login';
       if (isLoggedIn && isAuthRoute) return '/channels';
 
@@ -51,7 +50,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) {
               final channelId = state.pathParameters['channelId']!;
               final channelName = state.extra as String? ?? 'Salon';
-              
               return ChannelsScreen(
                 selectedChannelId: channelId,
                 selectedChannelName: channelName,
