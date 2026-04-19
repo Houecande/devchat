@@ -386,44 +386,65 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       );
     }
 
-    Widget buildChannelList(
-        List<Channel> channels, Map<String, String> memberships) {
-      final filtered = channels
-          .where((c) =>
-              c.name.toLowerCase().contains(_searchQuery.toLowerCase()))
-          .toList();
+    Widget buildChannelList(List<Channel> channels, Map<String, String> memberships) {
+  final filtered = channels
+      .where((c) => c.name.toLowerCase().contains(_searchQuery.toLowerCase()))
+      .toList();
 
-      return ListView.builder(
-        itemCount: filtered.length,
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemBuilder: (context, index) {
-          final ch = filtered[index];
-          final status = memberships[ch.id];
-          final isCreator = ch.createdBy == currentUserId;
-          final isJoined = isCreator || status == 'joined';
-          final isPending = status == 'pending';
-          final isSelected = widget.selectedChannelId == ch.id;
+  // ── Pull to refresh (mobile) + bouton refresh (desktop) ──
+  return RefreshIndicator(
+    color: AppTheme.primary,
+    onRefresh: () async {
+      ref.invalidate(channelsProvider);
+      ref.invalidate(userMembershipsProvider);
+      ref.invalidate(pendingRequestsProvider);
+      // Attendre que les providers se rechargent
+      await Future.delayed(const Duration(milliseconds: 800));
+    },
+    child: filtered.isEmpty
+        ? ListView(
+            children: const [
+              SizedBox(height: 100),
+              Center(
+                child: Text(
+                  'Aucun salon trouvé.',
+                  style: TextStyle(color: AppTheme.textSecondary),
+                ),
+              ),
+            ],
+          )
+        : ListView.builder(
+            itemCount: filtered.length,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemBuilder: (context, index) {
+              final ch = filtered[index];
+              final status = memberships[ch.id];
+              final isCreator = ch.createdBy == currentUserId;
+              final isJoined = isCreator || status == 'joined';
+              final isPending = status == 'pending';
+              final isSelected = widget.selectedChannelId == ch.id;
 
-          return ChannelTile(
-            channel: ch,
-            isSelected: isSelected,
-            isJoined: isJoined,
-            isPending: isPending,
-            onTap: () {
-              if (ch.isPrivate && !isJoined) {
-                if (!isPending) _showJoinRequestDialog(ch);
-              } else {
-                if (isDesktop) {
-                  context.go('/channels/${ch.id}', extra: ch.name);
-                } else {
-                  context.push('/channels/${ch.id}', extra: ch.name);
-                }
-              }
+              return ChannelTile(
+                channel: ch,
+                isSelected: isSelected,
+                isJoined: isJoined,
+                isPending: isPending,
+                onTap: () {
+                  if (ch.isPrivate && !isJoined) {
+                    if (!isPending) _showJoinRequestDialog(ch);
+                  } else {
+                    if (isDesktop) {
+                      context.go('/channels/${ch.id}', extra: ch.name);
+                    } else {
+                      context.push('/channels/${ch.id}', extra: ch.name);
+                    }
+                  }
+                },
+              );
             },
-          );
-        },
-      );
-    }
+          ),
+  );
+}
 
     final requests = pendingRequestsAsync.value ?? [];
 
@@ -510,43 +531,45 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     );
   }
 
-  Widget _buildSidebarHeader(
-      List<ChannelMember> requests, List<Channel> channels) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      child: Row(
-        children: [
-          const Icon(Icons.terminal_rounded,
-              color: AppTheme.primary, size: 32),
-          const SizedBox(width: 14),
-          const Text('DevChat',
-              style:
-                  TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const Spacer(),
-          IconButton(
-            icon: Badge(
-              isLabelVisible: requests.isNotEmpty,
-              backgroundColor: AppTheme.primary,
-              label: Text(requests.length.toString(),
-                  style: const TextStyle(
-                      color: Colors.white, fontSize: 10)),
-              child: Icon(Icons.notifications_rounded,
-                  color: requests.isNotEmpty
-                      ? AppTheme.primary
-                      : AppTheme.textSecondary,
-                  size: 24),
-            ),
-            onPressed: () => _showNotificationsDialog(requests, channels),
+  Widget _buildSidebarHeader(List<ChannelMember> requests, List<Channel> channels) {
+  return Container(
+    padding: const EdgeInsets.all(24),
+    child: Row(
+      children: [
+        const Icon(Icons.terminal_rounded, color: AppTheme.primary, size: 32),
+        const SizedBox(width: 14),
+        const Text('DevChat', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const Spacer(),
+        // ── Bouton refresh desktop ──
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded, color: AppTheme.textSecondary, size: 20),
+          tooltip: 'Rafraîchir',
+          onPressed: () {
+            ref.invalidate(channelsProvider);
+            ref.invalidate(userMembershipsProvider);
+            ref.invalidate(pendingRequestsProvider);
+          },
+        ),
+        IconButton(
+          icon: Badge(
+            isLabelVisible: requests.isNotEmpty,
+            backgroundColor: AppTheme.primary,
+            label: Text(requests.length.toString(),
+                style: const TextStyle(color: Colors.white, fontSize: 10)),
+            child: Icon(Icons.notifications_rounded,
+                color: requests.isNotEmpty ? AppTheme.primary : AppTheme.textSecondary,
+                size: 24),
           ),
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline_rounded,
-                color: AppTheme.primary, size: 24),
-            onPressed: () => _showCreateChannelDialog(context, ref),
-          ),
-        ],
-      ),
-    );
-  }
+          onPressed: () => _showNotificationsDialog(requests, channels),
+        ),
+        IconButton(
+          icon: const Icon(Icons.add_circle_outline_rounded, color: AppTheme.primary, size: 24),
+          onPressed: () => _showCreateChannelDialog(context, ref),
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildProfileSection() {
     return Container(
