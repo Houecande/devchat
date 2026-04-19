@@ -1,0 +1,47 @@
+﻿<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/devchat/">
+  <title>DevChat</title>
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0D0D0D; }
+    #splash {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; background: #0D0D0D;
+      z-index: 9999; gap: 16px; transition: opacity 0.5s ease;
+    }
+    #splash svg { width: 80px; height: 80px; stroke: #6C63FF; animation: pulse 1.5s ease-in-out infinite; }
+    #splash h1 { color: #FFF; font-family: -apple-system, sans-serif; font-size: 32px; font-weight: 700; letter-spacing: -1px; }
+    #splash p { color: rgba(158,158,158,0.7); font-family: -apple-system, sans-serif; font-size: 15px; }
+    .spinner { width: 28px; height: 28px; border: 2.5px solid rgba(108,99,255,0.2); border-top-color: #6C63FF; border-radius: 50%; animation: spin 0.8s linear infinite; margin-top: 24px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+    #splash.hidden { opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="splash">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <path d="M8 9l3 3l-3 3"/>
+      <path d="M13 15l3 0"/>
+      <path d="M3 6a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2l0 -12"/>
+    </svg>
+    <h1>DevChat</h1>
+    <p>Le chat pour les developpeurs</p>
+    <div class="spinner"></div>
+  </div>
+  <script>
+    window.addEventListener('flutter-first-frame', function() {
+      const splash = document.getElementById('splash');
+      splash.classList.add('hidden');
+      setTimeout(() => splash.remove(), 500);
+    });
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
