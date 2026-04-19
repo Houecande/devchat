@@ -68,17 +68,17 @@ class AuthNotifier extends StateNotifier<AsyncValue<void>> {
   }
 
   Future<void> signInWithGitHub() async {
-    state = const AsyncValue.loading();
-    try {
-      await _client.auth.signInWithOAuth(
-        OAuthProvider.github,
-        redirectTo: 'io.supabase.devchat://login-callback',
-      );
-      state = const AsyncValue.data(null);
-    } on AuthException catch (e) {
-      state = AsyncValue.error(e.message, StackTrace.current);
-    }
+  state = const AsyncValue.loading();
+  try {
+    await _client.auth.signInWithOAuth(
+      OAuthProvider.github,
+      redirectTo: 'https://houecande.github.io/devchat/',
+    );
+    state = const AsyncValue.data(null);
+  } on AuthException catch (e) {
+    state = AsyncValue.error(e.message, StackTrace.current);
   }
+}
 
   Future<void> signOut() async {
     await _client.auth.signOut();
