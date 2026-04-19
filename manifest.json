@@ -1,0 +1,11 @@
+{
+  "name": "DevChat",
+  "short_name": "DevChat",
+  "icons": [
+    { "src": "favicon.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0D0D0D",
+  "theme_color": "#6C63FF"
+}
