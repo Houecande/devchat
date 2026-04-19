@@ -6,8 +6,6 @@ import 'package:uuid/uuid.dart';
 
 final _client = Supabase.instance.client;
 
-// ─── Modèles ───────────────────────────────────────────────
-
 class Channel {
   final String id;
   final String name;
@@ -150,7 +148,7 @@ final channelsProvider = StreamProvider<List<Channel>>((ref) async* {
   final controller = StreamController<List<Channel>>();
 
   final realtimeChannel = _client
-      .channel('channels_changes_${DateTime.now().millisecondsSinceEpoch}')
+      .channel('channels_changes_')
       .onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
@@ -190,7 +188,7 @@ final userMembershipsProvider = StreamProvider<Map<String, String>>((ref) async*
   final controller = StreamController<Map<String, String>>();
 
   final realtimeChannel = _client
-      .channel('memberships_$userId')
+      .channel('memberships_')
       .onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
@@ -251,7 +249,7 @@ final pendingRequestsProvider = StreamProvider<List<ChannelMember>>((ref) async*
   final controller = StreamController<List<ChannelMember>>();
 
   final realtimeChannel = _client
-      .channel('pending_requests:$userId')
+      .channel('pending_requests_')
       .onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
@@ -291,7 +289,7 @@ final myNotificationsProvider = StreamProvider<List<AppNotification>>((ref) asyn
   final controller = StreamController<List<AppNotification>>();
 
   final realtimeChannel = _client
-      .channel('notifications:$userId')
+      .channel('notifications_')
       .onPostgresChanges(
         event: PostgresChangeEvent.insert,
         schema: 'public',
@@ -387,7 +385,7 @@ class MessagesNotifier extends StateNotifier<List<Message>> {
     } catch (_) {}
 
     _subscription = _client
-        .channel('messages:$channelId')
+        .channel('messages_')
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
