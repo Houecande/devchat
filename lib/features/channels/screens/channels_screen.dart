@@ -27,10 +27,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
   Timer? _refreshTimer;
+  String? _selectedChannelId;
+  String? _selectedChannelName;
 
   @override
   void initState() {
     super.initState();
+    _selectedChannelId = widget.selectedChannelId;
+    _selectedChannelName = widget.selectedChannelName;
     _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) {
         ref.invalidate(channelsProvider);
@@ -140,9 +144,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                           style: TextStyle(fontSize: 12)),
                       value: isPrivate,
                       activeColor: AppTheme.primary,
-                      onChanged: isLoading
-                          ? null
-                          : (v) => setModalState(() => isPrivate = v),
+                      onChanged: isLoading ? null : (v) => setModalState(() => isPrivate = v),
                     ),
                   ),
                 ],
@@ -154,39 +156,32 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 onPressed: isLoading ? null : () => Navigator.pop(ctx),
                 child: const Text('Annuler')),
             ElevatedButton(
-              onPressed: isLoading
-                  ? null
-                  : () async {
-                      if (formKey.currentState?.validate() ?? false) {
-                        setModalState(() => isLoading = true);
-                        try {
-                          await ref.read(createChannelProvider)(
-                              nameController.text.trim(),
-                              descController.text.trim(),
-                              isPrivate);
-                          if (ctx.mounted) {
-                            Navigator.pop(ctx);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('Salon cree !'),
-                                    backgroundColor: AppTheme.success));
-                          }
-                        } catch (_) {
-                          setModalState(() => isLoading = false);
-                          if (ctx.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('Erreur de connexion'),
-                                    backgroundColor: AppTheme.error));
-                          }
-                        }
-                      }
-                    },
+              onPressed: isLoading ? null : () async {
+                if (formKey.currentState?.validate() ?? false) {
+                  setModalState(() => isLoading = true);
+                  try {
+                    await ref.read(createChannelProvider)(
+                        nameController.text.trim(),
+                        descController.text.trim(),
+                        isPrivate);
+                    if (ctx.mounted) {
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Salon cree !'),
+                          backgroundColor: AppTheme.success));
+                    }
+                  } catch (_) {
+                    setModalState(() => isLoading = false);
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Erreur de connexion'),
+                          backgroundColor: AppTheme.error));
+                    }
+                  }
+                }
+              },
               child: isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Text('Creer'),
             ),
           ],
@@ -195,16 +190,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     );
   }
 
-  void _showNotificationsDialog(
-      List<ChannelMember> requests, List<Channel> channels) {
+  void _showNotificationsDialog(List<ChannelMember> requests, List<Channel> channels) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.background,
         title: const Row(
           children: [
-            Icon(Icons.notifications_active_rounded,
-                color: AppTheme.primary, size: 20),
+            Icon(Icons.notifications_active_rounded, color: AppTheme.primary, size: 20),
             SizedBox(width: 12),
             Text('Demandes d acces',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
@@ -226,45 +219,37 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     final req = requests[index];
                     final ch = channels.firstWhere(
                         (c) => c.id == req.channelId,
-                        orElse: () =>
-                            Channel(id: '', name: '?', createdAt: DateTime.now()));
+                        orElse: () => Channel(id: '', name: '?', createdAt: DateTime.now()));
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const CircleAvatar(
                         backgroundColor: AppTheme.surfaceVariant,
-                        child: Icon(Icons.person_rounded,
-                            color: AppTheme.textSecondary, size: 18),
+                        child: Icon(Icons.person_rounded, color: AppTheme.textSecondary, size: 18),
                       ),
                       title: Text(req.username ?? 'Utilisateur',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 14)),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       subtitle: Text('veut rejoindre #',
-                          style: const TextStyle(
-                              fontSize: 12, color: AppTheme.textSecondary)),
+                          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.check_circle_rounded,
-                                color: AppTheme.success, size: 28),
+                            icon: const Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 28),
                             tooltip: 'Accepter',
                             onPressed: () async {
                               Navigator.pop(ctx);
                               try {
-                                await ref
-                                    .read(membershipActionsProvider)
+                                await ref.read(membershipActionsProvider)
                                     .respondToRequest(req.channelId, req.userId, true);
                                 if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                                     content: Text('Demande acceptee !'),
                                     backgroundColor: AppTheme.success,
                                   ));
                                 }
                               } catch (e) {
                                 if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                                     content: Text('Erreur : '),
                                     backgroundColor: AppTheme.error,
                                   ));
@@ -273,26 +258,22 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                             },
                           ),
                           IconButton(
-                            icon: const Icon(Icons.cancel_rounded,
-                                color: AppTheme.error, size: 28),
+                            icon: const Icon(Icons.cancel_rounded, color: AppTheme.error, size: 28),
                             tooltip: 'Refuser',
                             onPressed: () async {
                               Navigator.pop(ctx);
                               try {
-                                await ref
-                                    .read(membershipActionsProvider)
+                                await ref.read(membershipActionsProvider)
                                     .respondToRequest(req.channelId, req.userId, false);
                                 if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                                     content: Text('Demande refusee.'),
                                     backgroundColor: AppTheme.error,
                                   ));
                                 }
                               } catch (e) {
                                 if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                                     content: Text('Erreur : '),
                                     backgroundColor: AppTheme.error,
                                   ));
@@ -307,8 +288,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 ),
         ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Fermer'))
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fermer'))
         ],
       ),
     );
@@ -319,21 +299,18 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.background,
-        title: const Text('Acces restreint',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Acces restreint', style: TextStyle(fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.lock_person_rounded, size: 64, color: AppTheme.primary),
             const SizedBox(height: 24),
-            Text(
-                'Souhaitez-vous demander l acces au salon # ?',
+            Text('Souhaitez-vous demander l acces au salon # ?',
                 textAlign: TextAlign.center),
           ],
         ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
           ElevatedButton(
             onPressed: () async {
               try {
@@ -392,17 +369,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           await Future.delayed(const Duration(milliseconds: 800));
         },
         child: filtered.isEmpty
-            ? ListView(
-                children: const [
-                  SizedBox(height: 100),
-                  Center(
-                    child: Text(
-                      'Aucun salon trouve.',
-                      style: TextStyle(color: AppTheme.textSecondary),
-                    ),
-                  ),
-                ],
-              )
+            ? ListView(children: const [
+                SizedBox(height: 100),
+                Center(child: Text('Aucun salon trouve.',
+                    style: TextStyle(color: AppTheme.textSecondary))),
+              ])
             : ListView.builder(
                 itemCount: filtered.length,
                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -412,7 +383,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   final isCreator = ch.createdBy == currentUserId;
                   final isJoined = isCreator || status == 'joined';
                   final isPending = status == 'pending';
-                  final isSelected = widget.selectedChannelId == ch.id;
+                  final isSelected = _selectedChannelId == ch.id;
 
                   return ChannelTile(
                     channel: ch,
@@ -424,7 +395,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                         if (!isPending) _showJoinRequestDialog(ch);
                       } else {
                         if (isDesktop) {
-                          context.go('/channels/', extra: ch.name);
+                          setState(() {
+                            _selectedChannelId = ch.id;
+                            _selectedChannelName = ch.name;
+                          });
                         } else {
                           context.push('/channels/', extra: ch.name);
                         }
@@ -453,9 +427,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     width: 320,
                     decoration: BoxDecoration(
                       color: AppTheme.background,
-                      border: Border(
-                          right: BorderSide(
-                              color: Colors.white.withValues(alpha: 0.05))),
+                      border: Border(right: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
                     ),
                     child: Column(
                       children: [
@@ -467,10 +439,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     ),
                   ),
                   Expanded(
-                    child: widget.selectedChannelId != null
+                    child: _selectedChannelId != null
                         ? ChatScreen(
-                            channelId: widget.selectedChannelId!,
-                            channelName: widget.selectedChannelName ?? 'Salon',
+                            channelId: _selectedChannelId!,
+                            channelName: _selectedChannelName ?? 'Salon',
                             isEmbedded: true)
                         : _buildWelcomeState(),
                   ),
@@ -493,8 +465,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 ),
                 IconButton(
                     icon: const Icon(Icons.logout_rounded),
-                    onPressed: () =>
-                        ref.read(authNotifierProvider.notifier).signOut()),
+                    onPressed: () => ref.read(authNotifierProvider.notifier).signOut()),
               ],
             ),
             body: Column(
@@ -520,12 +491,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         children: [
           const Icon(Icons.terminal_rounded, color: AppTheme.primary, size: 32),
           const SizedBox(width: 14),
-          const Text('DevChat',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text('DevChat', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const Spacer(),
           IconButton(
-            icon: const Icon(Icons.refresh_rounded,
-                color: AppTheme.textSecondary, size: 20),
+            icon: const Icon(Icons.refresh_rounded, color: AppTheme.textSecondary, size: 20),
             tooltip: 'Rafraichir',
             onPressed: () {
               ref.invalidate(channelsProvider);
@@ -540,16 +509,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               label: Text(requests.length.toString(),
                   style: const TextStyle(color: Colors.white, fontSize: 10)),
               child: Icon(Icons.notifications_rounded,
-                  color: requests.isNotEmpty
-                      ? AppTheme.primary
-                      : AppTheme.textSecondary,
+                  color: requests.isNotEmpty ? AppTheme.primary : AppTheme.textSecondary,
                   size: 24),
             ),
             onPressed: () => _showNotificationsDialog(requests, channels),
           ),
           IconButton(
-            icon: const Icon(Icons.add_circle_outline_rounded,
-                color: AppTheme.primary, size: 24),
+            icon: const Icon(Icons.add_circle_outline_rounded, color: AppTheme.primary, size: 24),
             onPressed: () => _showCreateChannelDialog(context, ref),
           ),
         ],
@@ -568,16 +534,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         leading: const CircleAvatar(
             radius: 16,
             backgroundColor: AppTheme.surfaceVariant,
-            child: Icon(Icons.person_rounded,
-                color: AppTheme.textSecondary, size: 18)),
+            child: Icon(Icons.person_rounded, color: AppTheme.textSecondary, size: 18)),
         title: Text(
             Supabase.instance.client.auth.currentUser?.email ?? 'Utilisateur',
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
             overflow: TextOverflow.ellipsis),
         trailing: IconButton(
             icon: const Icon(Icons.logout_rounded, size: 18),
-            onPressed: () =>
-                ref.read(authNotifierProvider.notifier).signOut()),
+            onPressed: () => ref.read(authNotifierProvider.notifier).signOut()),
       ),
     );
   }
@@ -603,15 +567,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.forum_rounded,
-              size: 100, color: AppTheme.primary.withValues(alpha: 0.1)),
+          Icon(Icons.forum_rounded, size: 100, color: AppTheme.primary.withValues(alpha: 0.1)),
           const SizedBox(height: 24),
           const Text('Bienvenue sur DevChat !',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Text('Selectionnez un salon pour commencer a echanger.',
-              style: TextStyle(
-                  color: AppTheme.textSecondary.withValues(alpha: 0.7))),
+              style: TextStyle(color: AppTheme.textSecondary.withValues(alpha: 0.7))),
         ],
       ),
     );
