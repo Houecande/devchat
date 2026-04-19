@@ -1,7 +1,6 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../features/auth/providers/auth_provider.dart';
@@ -49,6 +48,26 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _refreshTimer?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _openChat(BuildContext context, String channelId, String channelName, bool isDesktop) {
+    if (isDesktop) {
+      setState(() {
+        _selectedChannelId = channelId;
+        _selectedChannelName = channelName;
+      });
+    } else {
+      // Navigation Flutter directe sans router
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            channelId: channelId,
+            channelName: channelName,
+            isEmbedded: false,
+          ),
+        ),
+      );
+    }
   }
 
   void _listenToMyNotifications() {
@@ -348,13 +367,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final isDesktop = width > 900;
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
 
-    if (!isDesktop && widget.selectedChannelId != null) {
-      return ChatScreen(
-        channelId: widget.selectedChannelId!,
-        channelName: widget.selectedChannelName ?? 'Salon',
-      );
-    }
-
     Widget buildChannelList(List<Channel> channels, Map<String, String> memberships) {
       final filtered = channels
           .where((c) => c.name.toLowerCase().contains(_searchQuery.toLowerCase()))
@@ -394,14 +406,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                       if (ch.isPrivate && !isJoined) {
                         if (!isPending) _showJoinRequestDialog(ch);
                       } else {
-                        if (isDesktop) {
-                          setState(() {
-                            _selectedChannelId = ch.id;
-                            _selectedChannelName = ch.name;
-                          });
-                        } else {
-                          context.push('/channels/', extra: ch.name);
-                        }
+                        _openChat(context, ch.id, ch.name, isDesktop);
                       }
                     },
                   );
